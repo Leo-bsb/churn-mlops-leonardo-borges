@@ -1,8 +1,12 @@
 .venv/
 __pycache__/
 *.pyc
-artifacts/
 .env
-# dados: versionados por DVC a partir do Encontro 5
-/data/*.csv
 .pytest_cache/
+# data/churn.csv e artifacts/churn_model.pkl NÃO entram no Git: o DVC os rastreia
+# (dvc add / dvc.yaml criam os .gitignore locais e o ponteiro .dvc vai pro Git).
+
+# MLflow (Bloco 2): backend sqlite e artefatos locais
+mlflow.db
+mlartifacts/
+mlruns/

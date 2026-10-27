@@ -1,14 +1,16 @@
 """Carga, limpeza e validação dos dados.
 
 Funções puras (recebem/retornam DataFrame, sem efeito colateral) compostas por
-uma orquestração fina em ``load_clean``. A validação aqui é intencionalmente
-simples: no Encontro 4 ela é substituída por Great Expectations / pandera.
+uma orquestração fina em ``load_clean``. A validação em duas camadas: checagem
+estrutural simples (``validate``) + contrato pandera (``ChurnSchema``).
 """
 from __future__ import annotations
 
 from pathlib import Path
 
 import pandas as pd
+
+from churn.schema import ChurnSchema
 
 # Schema esperado do dataset Telco Customer Churn.
 EXPECTED_COLUMNS: frozenset[str] = frozenset({
@@ -52,9 +54,15 @@ def coerce_total_charges(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def load_clean(data_path: Path, id_column: str, target: str) -> pd.DataFrame:
-    """Pipeline de dados: carrega -> valida -> remove id -> coage TotalCharges."""
+    """Pipeline de dados: carrega -> valida colunas -> coage TotalCharges ->
+    contrato pandera -> remove id.
+
+    O contrato roda ANTES de ``drop_identifier`` porque checa a unicidade do
+    ``customerID``. ``lazy=True`` reporta todas as falhas de uma vez.
+    """
     df = load_raw(data_path)
     df = validate(df, target)
-    df = drop_identifier(df, id_column)
     df = coerce_total_charges(df)
+    df = ChurnSchema.validate(df, lazy=True)
+    df = drop_identifier(df, id_column)
     return df

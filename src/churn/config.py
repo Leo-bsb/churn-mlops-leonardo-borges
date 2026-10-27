@@ -30,9 +30,17 @@ class Settings(BaseSettings):
     test_size: float = 0.25
     random_state: int = 42
     n_estimators: int = 200
+    max_depth: int | None = None  # None = sem limite (comportamento original)
 
     # saída
     artifact_path: Path = Path("artifacts/churn_model.pkl")
+
+    # MLflow (Bloco 2). sqlite: o file store (./mlruns) não é mais suportado no MLflow 3.
+    mlflow_tracking_uri: str = "sqlite:///mlflow.db"
+    experiment_name: str = "churn"
+    registered_model_name: str = "churn"
+    champion_alias: str = "champion"
+    min_roc_auc: float = 0.80  # gate de promoção: abaixo disso o modelo não vira champion
 
 
 settings = Settings()
