@@ -1,0 +1,86 @@
+# CI do Bloco 4: testes + build da imagem da API (o build real de Docker
+# acontece aqui porque a máquina de desenvolvimento não tem Docker).
+name: CI
+
+on:
+  push:
+    branches: [main, feat/api-frontend-docker]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  testes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.14"
+
+      # A5: o lockfile deve estar coerente com o pyproject antes de sincronizar
+      - name: Conferir uv.lock (uv lock --check)
+        run: uv lock --check
+
+      - name: Instalar dependências (uv.lock travado)
+        run: uv sync --frozen
+
+      - name: Testes
+        run: uv run pytest -q
+
+      - name: Fumaça de import da API
+        run: uv run python -c "from churn.api import app; print(app.title)"
+
+  build-docker:
+    runs-on: ubuntu-latest
+    # B4: não construir a imagem se os testes falharem
+    needs: testes
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validar compose.yml
+        run: docker compose config
+
+      # A1/A5: a imagem é autocontida; garantir a presença do frontend antes
+      # do build para a falha ser explícita aqui, não dentro do COPY.
+      - name: Garantir presença do frontend (web/)
+        run: |
+          test -f web/index.html || { echo "::error::web/index.html ausente — a imagem precisa ser autocontida (A1)"; exit 1; }
+
+      - name: Build da imagem da API
+        run: docker build -t churn-api:ci .
+
+      - name: Testar a imagem (health + predict + UI)
+        run: |
+          # A5: limpeza garantida também em caso de falha (trap no EXIT)
+          cleanup() { docker stop churn-api >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          docker run -d --rm --name churn-api -p 8000:8000 churn-api:ci
+
+          ok=0
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8000/health -o /tmp/health.json; then ok=1; break; fi
+            sleep 2
+          done
+          if [ "$ok" -ne 1 ]; then
+            echo "::error::/health não respondeu no tempo limite"
+            docker logs churn-api
+            exit 1
+          fi
+          cat /tmp/health.json
+          # A5: model_loaded deve ser true dentro da imagem (artefato embutido)
+          jq -e '.status == "ok" and .model_loaded == true' /tmp/health.json > /dev/null
+
+          # A1: GET / serve o frontend embutido como HTML (não 404)
+          curl -sf http://127.0.0.1:8000/ -o /tmp/index.html
+          grep -qi '<html' /tmp/index.html
+
+          curl -sf -X POST http://127.0.0.1:8000/predict \
+            -H 'Content-Type: application/json' \
+            -d '{"gender":"Female","SeniorCitizen":0,"Partner":"Yes","Dependents":"No","tenure":12,"PhoneService":"Yes","MultipleLines":"No","InternetService":"Fiber optic","OnlineSecurity":"No","OnlineBackup":"Yes","DeviceProtection":"No","TechSupport":"No","StreamingTV":"Yes","StreamingMovies":"Yes","Contract":"Month-to-month","PaperlessBilling":"Yes","PaymentMethod":"Electronic check","MonthlyCharges":89.1,"TotalCharges":1069.2}' \
+            -o /tmp/predict.json
+          cat /tmp/predict.json
+          jq -e '.churn_probability >= 0 and .churn_probability <= 1 and (.risk_level == "baixo" or .risk_level == "medio" or .risk_level == "alto")' /tmp/predict.json > /dev/null
+
+          docker stop churn-api

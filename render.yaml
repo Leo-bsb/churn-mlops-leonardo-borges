@@ -1,0 +1,23 @@
+# Deploy na Render (opcional — Blueprint). A API é servida a partir do
+# Dockerfile da raiz do repositório (build automático no branch padrão).
+# A7: `runtime: docker` (não `env: docker`). A imagem é autocontida (API +
+# frontend + modelo). O CMD do Dockerfile respeita $PORT (injetado pela
+# Render no runtime do container; o default PORT=8000 vem do ENV da própria
+# imagem — não fixamos PORT no blueprint para não conflitar com o valor que a
+# Render define automaticamente para o proxy).
+services:
+  - type: web
+    name: churn-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: CHURN_MODEL_PATH
+        # B4: caminho absoluto dentro da imagem (WORKDIR /app)
+        value: /app/artifacts/churn_model.joblib
+      - key: CHURN_DECISION_THRESHOLD
+        value: "0.5"
+      - key: CHURN_CORS_ORIGINS
+        value: "*"

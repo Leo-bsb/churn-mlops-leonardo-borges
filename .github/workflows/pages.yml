@@ -1,0 +1,91 @@
+name: Deploy web to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "web/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  # Não cancelar deploys em andamento no mesmo grupo (R5).
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validar sintaxe do JS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: node --check
+        run: node --check web/app.js
+
+      - name: Injetar CHURN_API_BASE (repository variable)
+        env:
+          CHURN_API_BASE: ${{ vars.CHURN_API_BASE }}
+        shell: bash
+        run: |
+          node <<'NODE_EOF'
+          // R5: injeção robusta — exige o marcador literal, escapa a URL com
+          // JSON.stringify e falha o job se o marcador não existir.
+          // A URL chega apenas via process.env (sem interpolação de shell).
+          const fs = require("node:fs");
+          const arquivo = "web/config.js";
+          const marcador = 'window.CHURN_API_BASE = "";';
+          const url = String(process.env.CHURN_API_BASE || "").trim();
+
+          const conteudo = fs.readFileSync(arquivo, "utf8");
+          if (!conteudo.includes(marcador)) {
+            console.error("ERRO: marcador literal " + marcador + " não encontrado em " + arquivo + ".");
+            console.error("Restaure a linha no config.js ou ajuste este workflow antes de publicar.");
+            process.exit(1);
+          }
+
+          if (url === "") {
+            console.log("CHURN_API_BASE vazia — config.js mantido com mesma origem.");
+          } else {
+            const novaLinha = "window.CHURN_API_BASE = " + JSON.stringify(url) + ";";
+            // W2: função de substituição evita que "$&", "$`" e "$'" dentro da
+            // URL sejam interpretados como padrões especiais do String.replace.
+            fs.writeFileSync(arquivo, conteudo.replace(marcador, () => novaLinha), "utf8");
+            console.log("CHURN_API_BASE injetada (escapada via JSON.stringify + replacer literal): " + JSON.stringify(url));
+          }
+          NODE_EOF
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            echo "Etapa de injecao falhou (exit $status) — o deploy nao continuara."
+            exit "$status"
+          fi
+          echo "--- config.js resultando (linha CHURN_API_BASE) ---"
+          grep -n "window.CHURN_API_BASE" web/config.js
+
+      - name: Validar config.js injetado
+        shell: bash
+        run: node --check web/config.js
+
+      - name: Preparar artifact do Pages
+        uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

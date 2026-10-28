@@ -1,6 +1,40 @@
+# Composição do Bloco 4 (API + treino):
+#
+#   docker compose up                          -> sobe SOMENTE a API (porta 8000)
+#   docker compose --profile treino up treino  -> roda o pipeline de treino
+#
+# O serviço `treino` fica atrás de um profile dedicado: `docker compose up`
+# nunca o dispara sem querer. A imagem da API é autocontida (API + web/ +
+# modelo .joblib embutido): não precisa de nenhum volume para funcionar.
+#
+# ATENÇÃO (B3): o treino grava artifacts/churn_model.pkl, mas a API só lê
+# artifacts/churn_model.joblib. Montar ./artifacts NÃO troca o modelo da API
+# a menos que o churn_model.joblib exportado (scripts/export_joblib.py)
+# esteja lá. O caminho normal é: exportar o .joblib e rebuildar a imagem.
 services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: churn-api:0.1
+    ports:
+      - "8000:8000"
+    environment:
+      CHURN_MODEL_PATH: /app/artifacts/churn_model.joblib
+      CHURN_CORS_ORIGINS: "*"
+    restart: unless-stopped
+    # Para usar um modelo recém-treinado SEM rebuild, exporte o joblib e
+    # descomente o mount (o diretório precisa conter churn_model.joblib —
+    # só o .pkl do treino não substitui nada):
+    #   uv run python scripts/export_joblib.py
+    # volumes:
+    #   - ./artifacts:/app/artifacts:ro
+
   treino:
-    build: .
+    profiles: ["treino"]
+    build:
+      context: .
+      dockerfile: Dockerfile.train
     volumes:
       - ./src:/app/src
       - ./data:/app/data

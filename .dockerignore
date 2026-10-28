@@ -1,12 +1,31 @@
+# caches e ambiente local
+**/__pycache__/
+**/*.pyc
+.pytest_cache/
 .venv/
 .git/
+.dvc/
 .dvc/cache/
-__pycache__/
-*.pyc
-.pytest_cache/
-artifacts/
-data/*.csv
 .env
-mlflow.db
-mlartifacts/
+
+# A6: artefatos de equipe e de ML nunca entram na imagem
+.opencode/
 mlruns/
+mlartifacts/
+mlflow.db
+
+# A1/C7: dados de treino NUNCA entram na imagem (volume ou dvc pull)
+data/
+data/*.csv
+
+# não necessários no runtime da imagem
+tests/
+docs/
+
+# A6: da imagem saem TODO o diretório artifacts/, menos o modelo e as métricas
+# (a API de inferência precisa deles; ficam embutidos na imagem)
+artifacts/*
+!artifacts/churn_model.joblib
+!artifacts/model_metrics.json
+
+# A1: web/ NÃO é ignorado — o frontend entra na imagem e é servido em GET /

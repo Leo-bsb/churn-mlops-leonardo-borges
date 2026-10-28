@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Teste o modelo de previsão de churn (FastAPI + RandomForest) preenchendo os dados de um cliente." />
+  <title>Churn Predictor — Teste o modelo</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="config.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#form-card">Ir para o formulário</a>
+
+  <header class="topo">
+    <h1>Churn Predictor</h1>
+    <p class="subtitulo">Teste o modelo de cancelamento e visualize o estado do backend.</p>
+    <div class="status-api" id="api-status" role="status" aria-live="polite">
+      <span class="dot dot--off" id="api-dot" aria-hidden="true"></span>
+      <span id="api-status-text">Verificando API…</span>
+    </div>
+  </header>
+
+  <div class="aviso aviso--config" id="pages-aviso" role="alert" hidden>
+    <div id="aviso-pages" hidden>
+      <strong>Aviso:</strong> este site está no GitHub Pages sem backend configurado.
+      Defina a variável <code>CHURN_API_BASE</code> no repositório (Settings →
+      Secrets and variables → Actions → Variables) apontando para o host do
+      FastAPI, ou rode o backend localmente com Docker.
+    </div>
+    <div id="aviso-file" hidden>
+      <strong>API não configurada:</strong> esta página foi aberta direto do disco
+      (<code>file://</code>), formato em que o navegador não consegue alcançar o
+      backend. Rode o backend localmente e abra o site pela origem do FastAPI
+      (ex.: <code>http://127.0.0.1:8000/</code>).
+    </div>
+  </div>
+  <div class="aviso aviso--erro" id="banner-erro" role="alert" hidden></div>
+
+  <main class="layout">
+    <!-- Formulário de predição (19 campos do contrato POST /predict) -->
+    <section class="card" id="form-card" aria-labelledby="titulo-form">
+      <h2 id="titulo-form">Dados do cliente</h2>
+      <form id="form-predict" novalidate>
+        <fieldset>
+          <legend>Perfil</legend>
+          <div class="grade">
+            <div class="campo">
+              <label for="gender">Gênero</label>
+              <select id="gender" name="gender" required>
+                <option value="Female">Female</option>
+                <option value="Male">Male</option>
+              </select>
+            </div>
+            <div class="campo">
+              <label for="SeniorCitizen">Idoso (SeniorCitizen)</label>
+              <select id="SeniorCitizen" name="SeniorCitizen" required>
+                <option value="0">0 — Não</option>
+                <option value="1">1 — Sim</option>
+              </select>
+              <p class="campo-erro" id="erro-SeniorCitizen" hidden></p>
+            </div>
+            <div class="campo">
+              <label for="Partner">Parceiro (Partner)</label>
+              <select id="Partner" name="Partner" required>
+                <option value="Yes">Yes</option>
+                <option value="No">No</option>
+              </select>
+            </div>
+            <div class="campo">
+              <label for="Dependents">Dependentes (Dependents)</label>
+              <select id="Dependents" name="Dependents" required>
+                <option value="No">No</option>
+                <option value="Yes">Yes</option>
+              </select>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Serviços</legend>
+          <p class="dica-campos">
+            Quando <code>PhoneService = No</code> ou <code>InternetService = No</code>,
+            os selects dependentes são desabilitados e preenchidos automaticamente
+            (“No phone service” / “No internet service”): são os únicos valores que o
+            contrato da API aceita nesses casos.
+          </p>
+          <div class="grade">
+            <div class="campo">
+              <label for="tenure">Tempo de contrato (meses)</label>
+              <input type="number" id="tenure" name="tenure" min="0" max="72" step="1" value="12" required />
+              <p class="campo-erro" id="erro-tenure" hidden></p>
+            </div>
+            <div class="campo">
+              <label for="PhoneService">Serviço telefônico (PhoneService)</label>
+              <select id="PhoneService" name="PhoneService" required>
+                <option value="Yes">Yes</option>
+                <option value="No">No</option>
+              </select>
+            </div>
+            <div class="campo">
+              <label for="MultipleLines">Linhas múltiplas (MultipleLines)</label>
+              <select id="MultipleLines" name="MultipleLines" required>
+                <option value="No">No</option>
+                <option value="Yes">Yes</option>
+                <option value="No phone service">No phone service</option>
+              </select>
+            </div>
+            <div class="campo">
+              <label for="InternetService">Internet (InternetService)</label>
+              <select id="InternetService" name="InternetService" required>
+                <option value="Fiber optic">Fiber optic</option>
+                <option value="DSL">DSL</option>
+                <option value="No">No</option>
+              </select>
+            </div>
+            <div class="campo campo--dep" data-depends-on="internet">
+              <label for="OnlineSecurity">Segurança online (OnlineSecurity)</label>
+              <select id="OnlineSecurity" name="OnlineSecurity" required>
+                <option value="No">No</option>
+                <option value="Yes">Yes</option>
+                <option value="No internet service">No internet service</option>
+              </select>
+            </div>
+            <div class="campo campo--dep" data-depends-on="internet">
+              <label for="OnlineBackup">Backup online (OnlineBackup)</label>
+              <select id="OnlineBackup" name="OnlineBackup" required>
+                <option value="Yes">Yes</option>
+                <option value="No">No</option>
+                <option value="No internet service">No internet service</option>
+              </select>
+            </div>
+            <div class="campo campo--dep" data-depends-on="internet">
+              <label for="DeviceProtection">Proteção de dispositivo (DeviceProtection)</label>
+              <select id="DeviceProtection" name="DeviceProtection" required>
+                <option value="No">No</option>
+                <option value="Yes">Yes</option>
+                <option value="No internet service">No internet service</option>
+              </select>
+            </div>
+            <div class="campo campo--dep" data-depends-on="internet">
+              <label for="TechSupport">Suporte técnico (TechSupport)</label>
+              <select id="TechSupport" name="TechSupport" required>
+                <option value="No">No</option>
+                <option value="Yes">Yes</option>
+                <option value="No internet service">No internet service</option>
+              </select>
+            </div>
+            <div class="campo campo--dep" data-depends-on="internet">
+              <label for="StreamingTV">TV streaming (StreamingTV)</label>
+              <select id="StreamingTV" name="StreamingTV" required>
+                <option value="Yes">Yes</option>
+                <option value="No">No</option>
+                <option value="No internet service">No internet service</option>
+              </select>
+            </div>
+            <div class="campo campo--dep" data-depends-on="internet">
+              <label for="StreamingMovies">Filmes streaming (StreamingMovies)</label>
+              <select id="StreamingMovies" name="StreamingMovies" required>
+                <option value="Yes">Yes</option>
+                <option value="No">No</option>
+                <option value="No internet service">No internet service</option>
+              </select>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Conta e pagamentos</legend>
+          <div class="grade">
+            <div class="campo">
+              <label for="Contract">Contrato (Contract)</label>
+              <select id="Contract" name="Contract" required>
+                <option value="Month-to-month">Month-to-month</option>
+                <option value="One year">One year</option>
+                <option value="Two year">Two year</option>
+              </select>
+            </div>
+            <div class="campo">
+              <label for="PaperlessBilling">Cobrança digital (PaperlessBilling)</label>
+              <select id="PaperlessBilling" name="PaperlessBilling" required>
+                <option value="Yes">Yes</option>
+                <option value="No">No</option>
+              </select>
+            </div>
+            <div class="campo">
+              <label for="PaymentMethod">Forma de pagamento (PaymentMethod)</label>
+              <select id="PaymentMethod" name="PaymentMethod" required>
+                <option value="Electronic check">Electronic check</option>
+                <option value="Mailed check">Mailed check</option>
+                <option value="Bank transfer (automatic)">Bank transfer (automatic)</option>
+                <option value="Credit card (automatic)">Credit card (automatic)</option>
+              </select>
+            </div>
+            <div class="campo">
+              <label for="MonthlyCharges">Valor mensal (MonthlyCharges)</label>
+              <input type="number" id="MonthlyCharges" name="MonthlyCharges" min="0" max="200" step="0.01" value="89.10" required />
+              <p class="campo-erro" id="erro-MonthlyCharges" hidden></p>
+            </div>
+            <div class="campo">
+              <label for="TotalCharges">Valor total (TotalCharges)</label>
+              <input type="number" id="TotalCharges" name="TotalCharges" min="0" step="0.01" value="1069.20" required />
+              <p class="campo-erro" id="erro-TotalCharges" hidden></p>
+            </div>
+          </div>
+        </fieldset>
+
+        <div class="acoes">
+          <button type="submit" id="btn-prever" class="btn btn--primario">Prever</button>
+          <button type="button" id="btn-limpar" class="btn">Preencher exemplo</button>
+        </div>
+        <p class="erro-form" id="erro-form" role="alert" hidden></p>
+      </form>
+
+      <div id="resultado" class="resultado" role="status" aria-live="polite" hidden>
+        <h3>Resultado da predição</h3>
+        <dl class="grade grade--3">
+          <div><dt>Probabilidade de churn</dt><dd id="res-prob">—</dd></div>
+          <div><dt>Predição</dt><dd id="res-classe">—</dd></div>
+          <div><dt>Risco</dt><dd id="res-risco">—</dd></div>
+          <div><dt>Threshold</dt><dd id="res-threshold">—</dd></div>
+          <div><dt>Versão do modelo</dt><dd id="res-versao">—</dd></div>
+        </dl>
+        <div class="barra-prob" aria-hidden="true"><span id="barra-prob-fill"></span></div>
+      </div>
+      <p class="carregando" id="pred-loading" role="status" hidden>Calculando predição…</p>
+    </section>
+
+    <!-- Painel do modelo: /health + /model-info -->
+    <section class="card" id="model-card" aria-labelledby="titulo-model">
+      <h2 id="titulo-model">Modelo e métricas</h2>
+      <div id="model-loading" role="status">Carregando informações do modelo…</div>
+      <div id="model-info" hidden>
+        <ul class="chips" id="model-meta"></ul>
+        <h3>Métricas</h3>
+        <dl class="grade grade--3 metricas" id="model-metricas"></dl>
+        <h3>Importância das features</h3>
+        <div id="feature-bars" class="features"></div>
+      </div>
+    </section>
+
+    <!-- Painel Backend -->
+    <section class="card card--largo" id="backend-card" aria-labelledby="titulo-backend">
+      <h2 id="titulo-backend">Backend</h2>
+      <p class="backend-base">API base: <code id="backend-base-url">mesma origem</code></p>
+      <ul class="links-backend">
+        <li><a id="link-docs" href="/docs" target="_blank" rel="noopener">/docs (Swagger)</a></li>
+        <li><a id="link-health" href="/health" target="_blank" rel="noopener">/health</a></li>
+        <li><a id="link-model-info" href="/model-info" target="_blank" rel="noopener">/model-info</a></li>
+      </ul>
+      <h3>Última resposta JSON da API</h3>
+      <pre id="ultimo-json" class="json-box">// aguardando chamada de API…</pre>
+    </section>
+  </main>
+
+  <footer class="rodape">
+    <p>Frontend estático do projeto Churn — consome a API FastAPI (<code>/predict</code>, <code>/health</code>, <code>/model-info</code>).</p>
+  </footer>
+</body>
+</html>

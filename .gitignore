@@ -10,3 +10,7 @@ __pycache__/
 mlflow.db
 mlartifacts/
 mlruns/
+
+# O pkl do treino é rastreado pelo DVC; o joblib da API é versionado no Git.
+artifacts/*.pkl
+*.log
