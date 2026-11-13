@@ -1,0 +1,5 @@
+# Arquivos que o DVC deve ignorar ao calcular o hash de um diretório.
+# Sem isto, `src/churn/__pycache__/*.pyc` entraria no hash do stage `treino`
+# e o dvc.lock mudaria de máquina para máquina sem nenhuma mudança de código.
+__pycache__/
+*.pyc

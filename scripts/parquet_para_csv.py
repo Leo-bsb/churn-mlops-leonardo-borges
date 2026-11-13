@@ -1,7 +1,11 @@
-"""Regenera data/churn.csv a partir do churn.parquet (mesmo conteúdo, byte a byte).
+"""Regenera data/churn.csv a partir do churn.parquet do curso.
 
 Uso:  uv run python scripts/parquet_para_csv.py caminho/para/churn.parquet
-Resultado esperado: 7.044 linhas (com cabeçalho) e md5 d390bd07b5514a2256a2396993b8b0e3.
+
+O CSV versionado neste repositório tem 7.043 clientes (21 colunas) e md5
+``3a29edd8d69a0f5428433a8b0de2d0be``. Se o parquet for o mesmo dataset, o
+arquivo gerado sai **byte a byte** igual ao versionado — o script confere isso
+e avisa se houver divergência.
 """
 import hashlib
 import sys
@@ -9,11 +13,31 @@ from pathlib import Path
 
 import pandas as pd
 
+MD5_VERSIONADO = "3a29edd8d69a0f5428433a8b0de2d0be"
+
 origem = Path(sys.argv[1] if len(sys.argv) > 1 else "churn.parquet")
 destino = Path("data/churn.csv")
-destino.parent.mkdir(exist_ok=True)
+
+if not origem.is_file():
+    raise SystemExit(f"ERRO: parquet não encontrado: {origem}")
+
+anterior = destino.read_bytes() if destino.is_file() else None
+destino.parent.mkdir(parents=True, exist_ok=True)
 pd.read_parquet(origem).to_csv(destino, index=False)
-md5 = hashlib.md5(destino.read_bytes()).hexdigest()
-print(f"{destino} gerado — md5 {md5}")
-print("OK: igual à v1 do professor" if md5 == "d390bd07b5514a2256a2396993b8b0e3"
-      else "ATENÇÃO: md5 diferente da v1 do professor (d390bd07...)")
+
+novo = destino.read_bytes()
+md5 = hashlib.md5(novo).hexdigest()
+linhas = novo.count(b"\n")
+print(f"{destino} gerado — md5 {md5} ({linhas:,} linhas, {len(novo):,} bytes)")
+
+if anterior is None:
+    print("OK: arquivo criado (não havia versão anterior para comparar).")
+elif hashlib.md5(anterior).hexdigest() == md5:
+    print("OK: idêntico ao data/churn.csv versionado.")
+elif md5 == MD5_VERSIONADO:
+    print("OK: igual ao CSV canônico deste repositório.")
+else:
+    print(
+        "ATENÇÃO: o conteúdo difere do data/churn.csv versionado "
+        f"(esperado {MD5_VERSIONADO}, obtido {md5})."
+    )

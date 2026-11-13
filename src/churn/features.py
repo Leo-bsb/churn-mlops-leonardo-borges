@@ -45,7 +45,11 @@ class CategoricalEncoder:
         self._columns: list[str] = []
 
     def fit(self, features: pd.DataFrame) -> "CategoricalEncoder":
-        self._columns = features.select_dtypes(include="object").columns.tolist()
+        # object/string/category cobrem o dtype do CSV e o de um DataFrame
+        # montado a partir do JSON da API (que pode vir como `string`).
+        self._columns = features.select_dtypes(
+            include=["object", "string", "category"]
+        ).columns.tolist()
         self._encoder.fit(features[self._columns])
         return self
 

@@ -1,16 +1,37 @@
+# ---- Ambiente local -------------------------------------------------------
 .venv/
 __pycache__/
 *.pyc
 .env
 .pytest_cache/
-# data/churn.csv e artifacts/churn_model.pkl NÃO entram no Git: o DVC os rastreia
-# (dvc add / dvc.yaml criam os .gitignore locais e o ponteiro .dvc vai pro Git).
+.ruff_cache/
+.mypy_cache/
+.DS_Store
 
-# MLflow (Bloco 2): backend sqlite e artefatos locais
+# ---- Dados ----------------------------------------------------------------
+# `data/churn.csv` É versionado no Git de propósito (~1 MB): assim o clone é
+# auto-suficiente — `uv sync` + `dvc repro` funcionam sem nenhum remote DVC.
+# Em um projeto com dados maiores, o fluxo canônico seria
+# `dvc add data/churn.csv` + remote compartilhado (S3, Drive, DagsHub...),
+# deixando só o ponteiro `data/churn.csv.dvc` no Git.
+# O `dvc.yaml` descreve o pipeline reproduzível independentemente disso.
+
+# ---- DVC ------------------------------------------------------------------
+/.dvc/cache/
+/.dvc/tmp/
+/.dvc/config.local
+
+# ---- MLflow (Bloco 2) -----------------------------------------------------
+# Backend sqlite + artefatos locais: nunca vão para o Git.
 mlflow.db
-mlartifacts/
+mlflow/
 mlruns/
+mlartifacts/
 
-# O pkl do treino é rastreado pelo DVC; o joblib da API é versionado no Git.
+# ---- Artefatos de treino --------------------------------------------------
+# O .pkl é saída do stage `treino` do DVC (regenerado por `dvc repro`).
+# Versionados no Git: artifacts/churn_model.joblib (consumido pela API) e
+# artifacts/model_metrics.json (cartão do modelo exibido em /model-info).
 artifacts/*.pkl
+
 *.log

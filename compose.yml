@@ -1,7 +1,8 @@
 # Composição do Bloco 4 (API + treino):
 #
-#   docker compose up                          -> sobe SOMENTE a API (porta 8000)
+#   docker compose up --build                  -> sobe SOMENTE a API (porta 8000)
 #   docker compose --profile treino up treino  -> roda o pipeline de treino
+#   docker compose config                      -> valida sem subir nada
 #
 # O serviço `treino` fica atrás de um profile dedicado: `docker compose up`
 # nunca o dispara sem querer. A imagem da API é autocontida (API + web/ +
@@ -35,8 +36,13 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.train
+    environment:
+      # Runs do MLflow persistidos no host (./mlflow), não dentro do container:
+      # sem isso, cada `docker compose run` perderia o histórico ao terminar.
+      CHURN_MLFLOW_TRACKING_URI: sqlite:////app/mlflow/mlflow.db
     volumes:
       - ./src:/app/src
       - ./data:/app/data
       - ./artifacts:/app/artifacts
+      - ./mlflow:/app/mlflow
     command: uv run python -m churn.model

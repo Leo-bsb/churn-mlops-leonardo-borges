@@ -11,6 +11,8 @@ Rodar localmente::
 Variáveis de ambiente (todas opcionais):
 
 - ``CHURN_MODEL_PATH``       caminho do artefato (padrão ``artifacts/churn_model.joblib``)
+- ``CHURN_METRICS_PATH``     cartão do modelo em JSON (padrão ``artifacts/model_metrics.json``)
+- ``CHURN_WEB_DIR``          pasta do frontend servido em ``/`` (padrão ``web``)
 - ``CHURN_DECISION_THRESHOLD`` corte de classificação (padrão ``0.5``; valor
   inválido não derruba o import: cai para ``0.5`` com aviso no log)
 - ``CHURN_CORS_ORIGINS``     origens separadas por vírgula (padrão ``*``)
@@ -229,6 +231,13 @@ class PredictResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+# Faixas de risco exibidas ao cliente. São decisão de produto (não do modelo):
+# o corte binário continua sendo DECISION_THRESHOLD; aqui só traduzimos a
+# probabilidade em uma leitura de negócio.
+RISK_LOW_MAX = 0.35
+RISK_HIGH_MIN = 0.60
+
+
 def _utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -250,12 +259,14 @@ def model_info() -> dict:
             status_code=503,
             detail=f"Modelo não carregado ({state.load_error or 'artefato ausente'}).",
         )
-    metrics: dict = {}
+    # Cartão do modelo gerado pelo treino (churn.model): métricas, linhagem e
+    # data do treino. Ausente/corrompido não derruba o endpoint: devolve {}.
+    card: dict = {}
     if METRICS_PATH.exists():
         try:
-            metrics = json.loads(METRICS_PATH.read_text(encoding="utf-8"))
-        except Exception:
-            metrics = {}
+            card = json.loads(METRICS_PATH.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            card = {}
     names_attr = getattr(state.model, "feature_names_in_", None)
     imp_attr = getattr(state.model, "feature_importances_", None)
     names = [] if names_attr is None else list(names_attr)
@@ -272,17 +283,26 @@ def model_info() -> dict:
         "model_version": MODEL_VERSION,
         "n_features": int(state.model.n_features_in_),
         "n_estimators": int(getattr(state.model, "n_estimators", 0)),
+        "max_depth": getattr(state.model, "max_depth", None),
         "classes": [int(c) for c in state.model.classes_],
         "decision_threshold": DECISION_THRESHOLD,
-        "metrics": metrics.get("metrics", {}),
+        "risk_levels": {
+            "baixo": f"p < {RISK_LOW_MAX}",
+            "medio": f"{RISK_LOW_MAX} <= p < {RISK_HIGH_MIN}",
+            "alto": f"p >= {RISK_HIGH_MIN}",
+        },
+        "metrics": card.get("metrics", {}),
+        "trained_at": card.get("trained_at"),
+        "data_md5": card.get("data_md5"),
+        "git_commit": card.get("git_commit"),
         "feature_importances": importances,
     }
 
 
 def _risk_level(p: float) -> str:
-    if p < 0.35:
+    if p < RISK_LOW_MAX:
         return "baixo"
-    if p < 0.60:
+    if p < RISK_HIGH_MIN:
         return "medio"
     return "alto"
 
@@ -302,7 +322,10 @@ def predict(payload: ChurnRequest) -> PredictResponse:
     # A4: arredonda UMA vez e deriva prediction e risk_level do mesmo valor
     # exibido em ``churn_probability`` (as faixas de risco ficam consistentes
     # com o número que o cliente vê, inclusive nas fronteiras 0.35 / 0.60).
-    probability = round(float(state.model.predict_proba(encoded)[0][1]), 4)
+    probabilities = state.model.predict_proba(encoded)[0]
+    classes = list(getattr(state.model, "classes_", [0, 1]))
+    positive = classes.index(1) if 1 in classes else len(classes) - 1
+    probability = round(float(probabilities[positive]), 4)
     return PredictResponse(
         churn_probability=probability,
         churn_prediction=probability >= DECISION_THRESHOLD,
@@ -313,19 +336,22 @@ def predict(payload: ChurnRequest) -> PredictResponse:
 
 
 # ---------------------------------------------------------------------------
-# Frontend (web/ é criado por outra unidade; montar sem quebrar se não existir)
+# Frontend: a pasta web/ é servida na mesma origem (montada no fim do módulo)
 # ---------------------------------------------------------------------------
 
 
 @app.get("/", include_in_schema=False)
 def index() -> Response:
-    """Root: serve web/index.html se existir; senão, mensagem JSON simples."""
+    """Root: serve web/index.html se existir; senão, uma resposta JSON 404 clara."""
     index_html = WEB_DIR / "index.html"
     if index_html.is_file():
         return FileResponse(index_html)
     return JSONResponse(
         {
-            "message": "Churn Inference API. Frontend ainda não construído.",
+            "message": (
+                "Churn Inference API no ar, mas o frontend não foi encontrado em "
+                f"'{WEB_DIR}' (defina CHURN_WEB_DIR)."
+            ),
             "docs": "/docs",
             "health": "/health",
         },

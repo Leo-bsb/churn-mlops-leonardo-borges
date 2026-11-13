@@ -1,7 +1,9 @@
+from pathlib import Path
+
 import pandas as pd
 import pytest
 
-from churn.data import coerce_total_charges, drop_identifier, validate
+from churn.data import coerce_total_charges, drop_identifier, load_clean, validate
 
 
 def test_coerce_total_charges_converte_branco_em_zero(raw_frame):
@@ -24,3 +26,24 @@ def test_validate_falha_sem_coluna(raw_frame):
 def test_drop_identifier(raw_frame):
     out = drop_identifier(raw_frame, "customerID")
     assert "customerID" not in out.columns
+
+
+def test_dataset_real_atende_ao_contrato():
+    """O CSV versionado precisa passar inteiro pelo contrato (não só a amostra).
+
+    Se este teste falhar, dados e `ChurnSchema` divergiram — o treino real
+    quebraria do mesmo jeito, só que mais tarde.
+    """
+    csv = Path(__file__).resolve().parents[1] / "data" / "churn.csv"
+    if not csv.is_file():
+        pytest.skip("data/churn.csv ausente (dataset opcional para esta suíte)")
+
+    df = load_clean(csv, "customerID", "Churn")
+
+    assert len(df) == 7043
+    assert df.shape[1] == 20  # 21 colunas do CSV - customerID
+    assert df.isna().sum().sum() == 0
+    assert set(df["Churn"].unique()) == {"Yes", "No"}
+    assert df["tenure"].between(0, 72).all()
+    assert (df["TotalCharges"] >= 0).all()
+

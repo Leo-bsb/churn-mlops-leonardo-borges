@@ -1,0 +1,27 @@
+schema: '2.0'
+stages:
+  treino:
+    cmd: uv run python -m churn.model
+    deps:
+    - path: data/churn.csv
+      hash: md5
+      md5: 3a29edd8d69a0f5428433a8b0de2d0be
+      size: 988729
+    - path: pyproject.toml
+      hash: md5
+      md5: 2c43014ade4358da968313f2b6d69732
+      size: 758
+    - path: src/churn
+      hash: md5
+      md5: c792efa879f48eb88210ac9bdfede8bb.dir
+      size: 36494
+      nfiles: 11
+    - path: uv.lock
+      hash: md5
+      md5: b0a57d9ef760030df25811c0d2377746
+      size: 834825
+    outs:
+    - path: artifacts/churn_model.pkl
+      hash: md5
+      md5: 3884d0c9d5bb55b05043127c013c92d3
+      size: 5523680

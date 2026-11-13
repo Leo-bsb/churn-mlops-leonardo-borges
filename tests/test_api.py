@@ -76,10 +76,11 @@ def test_model_info(client: TestClient) -> None:
     assert body["model_version"] == "0.1.0"
     assert body["n_features"] == 20
     assert body["n_estimators"] == 200
+    assert body["max_depth"] == 8
     assert body["classes"] == [0, 1]
     assert body["decision_threshold"] == pytest.approx(0.5)
-    assert body["metrics"]["roc_auc"] == pytest.approx(0.8053, abs=5e-4)
-    assert body["metrics"]["accuracy"] == pytest.approx(0.757, abs=5e-4)
+    assert body["metrics"]["roc_auc"] == pytest.approx(0.8195, abs=5e-4)
+    assert body["metrics"]["accuracy"] == pytest.approx(0.7683, abs=5e-4)
     importances = body["feature_importances"]
     assert len(importances) == 20
     assert importances[0]["feature"] == "Contract"

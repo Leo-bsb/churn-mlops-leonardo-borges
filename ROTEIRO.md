@@ -1,207 +1,149 @@
-# Roteiro: do zip ao GitHub com DVC
+# Roteiro de reprodução
 
-Todos os comandos abaixo foram executados numa simulação (git remoto local +
-remote DVC em pasta) e funcionaram. **Exceção:** o `docker build` não foi
-testado (o ambiente da simulação não tem Docker) — rode você.
+Passo a passo para sair do `git clone` e chegar na API respondendo — com os
+comandos na ordem em que fazem sentido. Para o *porquê* de cada decisão, veja o
+[`README.md`](README.md).
 
-Pré-requisitos: Git, Python 3.11+, [uv](https://docs.astral.sh/uv/), Docker.
+Pré-requisitos: Git, [uv](https://docs.astral.sh/uv/) e Docker (opcional, para
+as etapas 7 e 8). O Python é baixado pelo `uv` conforme o `uv.lock`.
 
 ---
 
-## 0. Antes de tudo (no GitHub, pelo navegador)
-
-1. Crie um repositório **vazio** (sem README, sem .gitignore, sem licença).
-2. Copie a URL (`https://github.com/SEU_USUARIO/SEU_REPO.git`).
-
-## 1. Preparar a pasta local
-
-Abra esta pasta (`prj_churn`) no VS Code (`File > Open Folder`) e use o terminal
-integrado (`Ctrl+'`).
+## 1. Clonar e preparar o ambiente
 
 ```bash
-uv sync                                    # cria .venv e instala tudo do uv.lock
-uv run python scripts/parquet_para_csv.py CAMINHO/churn.parquet
-#  -> deve imprimir: OK: igual à v1 do professor   (md5 d390bd07...)
-uv run pytest -q                           # esperado: 11 passed
-```
-
-## 2. Conectar ao GitHub  (⚠ a ordem importa)
-
-O `data/churn.csv` só pode ser adicionado ao Git **depois** do `dvc add`,
-senão o CSV entra no histórico.
-
-```bash
-git init -b main
-git config user.name  "Seu Nome"           # só se ainda não configurou
-git config user.email "seu@email.com"
-git remote add origin https://github.com/SEU_USUARIO/SEU_REPO.git
-
-dvc init                                   # liga o DVC ao repo
-dvc add data/churn.csv                     # cria data/churn.csv.dvc + data/.gitignore
-```
-
-## 3. Remote do DVC (onde os bytes moram)
-
-Comece por um remote local (uma pasta **fora** do repositório):
-
-```bash
-dvc remote add -d local ../dvc_remote
-```
-
-## 4. Primeiro commit + push
-
-```bash
-git add -A
-git status                                 # confira: NÃO deve aparecer data/churn.csv nem .venv
-git commit -m "projeto churn: estrutura, schema pandera, Dockerfile, DVC (dados v1)"
-git push -u origin main
-dvc push                                   # envia o CSV (v1) para o remote
-```
-
-## 5. Rodar o pipeline (gera o .pkl)
-
-```bash
-uv run dvc repro                           # roda o stage `treino`, grava dvc.lock
-git add -A
-git commit -m "pipeline dvc: treino sobre dados v1"
-git push
-dvc push                                   # envia também o churn_model.pkl
-```
-
-> **Sobre "subir o .pkl por terminal":** o modelo sobe pelo `dvc push` (ele é
-> `outs` do `dvc.yaml`), não pelo `git push`. No GitHub aparece só o
-> `dvc.lock` com o hash. Se o professor pediu o `.pkl` no próprio GitHub,
-> confirme com ele — vai contra o que o slide 6 do Encontro 5 ensina.
-
-## 6. Criar a v2 do dado e alternar entre versões (checkpoint do Enc. 5)
-
-```bash
-uv run python scripts/make_v2.py           # +100 linhas válidas -> 7.144 linhas
-dvc add data/churn.csv
-uv run dvc repro                           # retreina com a v2 (atualiza dvc.lock)
-git add -A
-git commit -m "dados v2 (+100 linhas)"
-git push
-dvc push
-```
-
-Voltar para a v1 e depois para a v2:
-
-```bash
-git checkout HEAD~1 -- data/churn.csv.dvc dvc.lock
-dvc checkout                               # churn.csv volta a ter 7.044 linhas
-wc -l data/churn.csv
-
-git checkout HEAD -- data/churn.csv.dvc dvc.lock
-dvc checkout                               # de volta às 7.144
-```
-
-> ⚠ Use `HEAD~1` **só se** o commit "dados v2" for o último. Confira com
-> `git log --oneline`.
->
-> ⚠ Rode o treino sempre por `dvc repro`. Se rodar `python -m churn.model`
-> direto, o `.pkl` fica diferente do `dvc.lock` e o `dvc checkout` recusa
-> sobrescrever ("Can't remove unsaved files"). Se acontecer:
-> `dvc checkout data/churn.csv.dvc` (só o dado) ou `dvc checkout --force`.
-
-## 7. Provar que o contrato pega dado ruim (tarefa do Enc. 4)
-
-Já existe em `tests/test_schema.py` (tenure = 999, `Contract` = "Vitalício",
-ID duplicado, MonthlyCharges negativo). Para mostrar no terminal:
-
-```bash
-uv run pytest tests/test_schema.py -v
-```
-
-## 8. Docker (Enc. 3 — não testado por mim)
-
-```bash
-docker build -t churn:0.1 .
-docker run --rm -v "$(pwd)/data:/app/data" -v "$(pwd)/artifacts:/app/artifacts" churn:0.1
-# ou
-docker compose up
-```
-
-Requer `data/churn.csv` presente (após `dvc pull` ou `dvc checkout`).
-No Windows, prefira rodar pelo WSL2 (o slide de atrito do Enc. 3 avisa dos
-caminhos do `-v`).
-
-## 9. Reproduzir do zero (o que o professor pode testar)
-
-```bash
-git clone https://github.com/SEU_USUARIO/SEU_REPO.git && cd SEU_REPO
+git clone https://github.com/Leo-bsb/churn-mlops-leonardo-borges.git
+cd churn-mlops-leonardo-borges
 uv sync
-dvc pull        # precisa do remote acessível — ver aviso abaixo
+```
+
+`uv sync` cria o `.venv` e instala exatamente o que está no `uv.lock`
+(produção + grupo `dev`: pytest, dvc, pyarrow, httpx).
+
+## 2. Rodar a suíte de testes
+
+```bash
+uv run pytest -q          # esperado: 62 passed
+```
+
+Se os 62 passarem, o contrato de dados, as features, o treino, o MLflow e a API
+estão funcionando neste ambiente.
+
+## 3. Rodar o pipeline de treino
+
+```bash
 uv run dvc repro
 ```
 
-> ⚠ Um remote em **pasta local** só funciona na sua máquina. Quem clonar o
-> repositório **não** consegue `dvc pull`. Pergunte ao professor se o
-> remote local basta para a entrega (o slide 9 diz para começar por ele) ou se
-> quer um remote compartilhado (Google Drive, S3, DagsHub).
+O que acontece:
 
----
+1. `data/churn.csv` passa pelo contrato (pandera);
+2. features derivadas + split estratificado 75/25 (seed 42);
+3. o `CategoricalEncoder` é ajustado **só no treino**;
+4. o Random Forest (200 árvores, profundidade 8) é treinado e avaliado;
+5. um run é registrado no MLflow (`sqlite:///mlflow.db`);
+6. saem dois artefatos:
+   - `artifacts/churn_model.pkl` — bundle `{"model", "encoder"}` (saída do DVC);
+   - `artifacts/model_metrics.json` — cartão do modelo (versionado no Git).
 
-# Parte 2 — Bloco 2 (MLflow: Encontros 6, 7 e 8)
+Esperado no teste: `accuracy 0.7683`, `precision 0.6694`, `recall 0.5689`,
+`f1 0.6151`, `roc_auc 0.8195`.
 
-Pré-requisito: a Parte 1 concluída (repo no GitHub, DVC funcionando, `data/churn.csv` presente).
+> `dvc repro` só reexecuta o stage se um `dep` (dado, `src/churn`,
+> `pyproject.toml` ou `uv.lock`) mudou. Para forçar: `uv run dvc repro --force`.
 
-## 10. Atualizar a codebase
+## 4. Levar o modelo novo para a API
 
-Copie do zip novo para o seu repo, **sobrescrevendo** estes arquivos:
-
-```
-pyproject.toml   uv.lock   .gitignore   .dockerignore   README.md
-src/churn/config.py   src/churn/model.py
-src/churn/lineage.py  src/churn/experiments.py  src/churn/registry.py     (novos)
-tests/test_lineage.py  tests/test_mlflow_pipeline.py                        (novos)
-```
-
-Depois:
+A API lê **apenas** `artifacts/churn_model.joblib` (comprimido), nunca o `.pkl`:
 
 ```bash
-uv sync                                  # instala mlflow (3.x) e pyyaml
-uv run pytest -q                         # esperado: 18 passed (~25 s)
-git checkout -b feat/mlflow              # opcional, mas é o hábito do curso
-git add -A
-git status                               # NÃO deve listar mlflow.db nem mlruns/
-git commit -m "feat: tracking, registry e empacotamento com MLflow"
+uv run python scripts/export_joblib.py
 ```
 
-> Faça o commit **antes** de treinar: o run grava o hash do commit atual (`git_commit`).
+Depois disso:
 
-## 11. Rodar o Bloco 2 (nesta ordem)
+- rodando local com `uvicorn`, basta reiniciar o processo;
+- rodando em Docker, é preciso **rebuild** (`docker compose build api`).
+
+## 5. Experimentos e promoção do champion
 
 ```bash
-uv run python -m churn.model             # 1 run "rf" (roc_auc ≈ 0.805) — ou: uv run dvc repro
-uv run python -m churn.experiments       # 9 runs; o melhor deve ser rf-n200-d8 = 0.8195
-uv run python -m churn.registry          # -> "churn v1 @champion (run rf-n200-d8, roc_auc 0.8195)"
+uv run python -m churn.experiments    # 9 runs (~30 s)
+uv run python -m churn.registry       # melhor run -> gate >= 0.80 -> churn@champion
 uv run mlflow ui --backend-store-uri sqlite:///mlflow.db
 ```
 
-Abra http://localhost:5000, entre no experimento `churn`, ordene por `roc_auc` e
-tire um print (comparação dos runs, aba *Models* com `churn` v1 e o alias `champion`).
-Isso costuma ser a evidência que o professor quer ver.
+Abrir <http://localhost:5000>, entrar no experimento `churn`, ordenar por
+`roc_auc` e conferir a aba *Models* (`churn` com o alias `champion`).
 
-Sobre `dvc repro`: cada `dvc repro` agora também cria um run no MLflow. O resultado do
-`dvc.lock` não muda por causa do MLflow, só por causa de dado ou código.
+O melhor resultado do grid é `rf-n200-d8` (ROC AUC 0.8195) — o mesmo
+`n_estimators`/`max_depth` que é o default de `config.py`.
 
-## 12. O que mudou em relação aos slides (e por quê)
+> Faça commit **antes** de treinar: o run grava o hash do commit atual na tag
+> `git_commit`.
 
-| Slide | Como está no código | Motivo |
-|---|---|---|
-| 33 `prepare(cfg)` | criei `prepare()` em `model.py`, devolvendo splits já codificados | a função não existe no projeto |
-| 12 grid | cada run do grid também salva o modelo | o `register_model(runs:/.../model)` do slide 34 falha se o run não tiver modelo |
-| 34 `search_runs(["churn"])` | `search_runs(experiment_names=[...])` | o 1º argumento posicional é **ids**, não nomes |
-| 32 `export MLFLOW_TRACKING_URI` | URI fixada em `config.py` | evita runs "sumindo" entre terminais (ponto de atrito do slide 36) |
-| 28 gate | `promote_best()` em `registry.py`, limiar em `config.py` | slide mostra só o `if`; aqui é função reutilizável e idempotente |
-| 36 `mlartifacts/` | os artefatos vão para `mlruns/` no MLflow 3.16 | verificado na execução; ambos estão no `.gitignore` |
-| 35 signature só no melhor | signature + input_example em **todos** os runs | simplifica e não custa nada |
+## 6. API e frontend local
 
-## 13. Docker com MLflow (não testado)
+```bash
+uv run uvicorn churn.api:app --port 8000
+```
 
-O `docker compose up` continua treinando, mas o `mlflow.db`/`mlruns/` ficam **dentro do
-container** e somem quando ele termina; `git_commit` sai `unknown` (não há git na imagem)
-e `data_md5` só sai preenchido porque o `./data` é montado (traz o `churn.csv.dvc`).
-Para guardar os runs do container, monte também `./mlruns` e um caminho para o sqlite —
-peça e eu ajusto o `compose.yml`.
+- UI: <http://localhost:8000/>
+- Swagger: <http://localhost:8000/docs>
+- Health: <http://localhost:8000/health>
+
+## 7. Docker
+
+```bash
+docker compose config                  # valida a configuração
+docker compose up --build              # SÓ a API (autocontida: API + UI + modelo)
+
+# treino em container (dado via volume; runs do MLflow persistidos em ./mlflow)
+docker compose --profile treino up treino
+```
+
+Sem compose:
+
+```bash
+docker build -t churn-api:0.1 .
+docker run -p 8000:8000 churn-api:0.1
+```
+
+## 8. Publicar o frontend no GitHub Pages
+
+1. Push/merge em `main` (o workflow `pages.yml` roda quando `web/**` muda).
+2. Em **Settings → Pages**, deixe a fonte em **GitHub Actions**.
+3. Em **Settings → Secrets and variables → Actions → Variables**, crie
+   `CHURN_API_BASE` com a URL pública do backend (ex.: `https://churn-api.onrender.com`).
+4. Sem essa variável, o site sobe e mostra um aviso claro de backend não
+   configurado.
+
+## 9. Versionar dados (v1 → v2)
+
+```bash
+uv run python scripts/make_v2.py     # 7.043 -> 7.143 clientes
+uv run dvc repro                     # retreina e atualiza dvc.lock
+git add data/churn.csv dvc.lock
+git commit -m "dados v2: +100 clientes"
+```
+
+Para voltar à versão anterior:
+
+```bash
+git checkout HEAD~1 -- data/churn.csv dvc.lock
+uv run dvc repro
+```
+
+> Este repositório **não tem remote DVC**: o CSV (988 KB) está versionado no
+> Git para o clone ser auto-suficiente. `dvc pull` / `dvc push` não são usados
+> aqui. Para migrar ao fluxo canônico, veja o README §4.3.
+
+## 10. Checklist de entrega
+
+- [ ] `uv sync` sem erro
+- [ ] `uv run pytest -q` → 62 passed
+- [ ] `uv run dvc repro` → ROC AUC 0.8195
+- [ ] `uv run python -m churn.registry` → `churn v1 @champion`
+- [ ] `docker compose up --build` → UI e `/docs` respondendo
+- [ ] CI verde no GitHub Actions (testes + build da imagem)
+- [ ] `web/screenshot.png` atualizado, se a UI mudou

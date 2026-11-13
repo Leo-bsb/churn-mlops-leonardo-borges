@@ -1,8 +1,21 @@
+# Pipeline reproduzível (Encontro 5): dado + código -> modelo.
+#
+#   dvc repro     # reexecuta o stage só quando um dep muda (hash)
+#   dvc status    # mostra o que está defasado
+#
+# Observação de projeto: `artifacts/model_metrics.json` NÃO é declarado aqui.
+# Ele é o "cartão do modelo" (métricas + linhagem + data do treino), gerado pelo
+# mesmo comando e versionado no Git porque a imagem Docker da API o consome em
+# /model-info. Declará-lo como `outs` faria o DVC tentar cacheá-lo e o gitignorar;
+# como ele carrega `trained_at`, o hash mudaria a cada run — ruído sem ganho.
 stages:
   treino:
+    desc: Treina o RandomForest, avalia no teste e grava o bundle .pkl.
     cmd: uv run python -m churn.model
     deps:
       - data/churn.csv
       - src/churn
+      - pyproject.toml
+      - uv.lock
     outs:
       - artifacts/churn_model.pkl
