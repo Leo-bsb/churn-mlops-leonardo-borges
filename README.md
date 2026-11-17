@@ -182,10 +182,6 @@ Telco Customer Churn (dataset público de exemplo da IBM), 7.043 clientes e 21
 colunas: dados demográficos, serviços contratados, contrato, cobrança e o alvo
 `Churn` (`Yes`/`No`). Taxa de churn: **2.291 / 7.043 = 32,5%**.
 
-O CSV versionado tem md5 `3a29edd8d69a0f5428433a8b0de2d0be`. Se você tiver o
-`churn.parquet` original do curso, `scripts/parquet_para_csv.py` regenera o CSV
-e confere se o resultado é byte a byte igual ao versionado.
-
 Uma particularidade do dataset: **11 clientes têm `TotalCharges` em branco** e
 todos eles têm `tenure = 0` (acabaram de entrar). O script original preenchia
 com o número mágico `2200`; aqui esses casos viram `0.0`, que é o valor
