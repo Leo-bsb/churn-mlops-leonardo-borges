@@ -10,7 +10,7 @@
 
 Projeto-fio-condutor do curso de **MLOps**: prever quais clientes de uma
 operadora de telecom vão cancelar (**churn**) e levar essa previsão até uma API
-em produção — passando por contrato de dados, engenharia de features,
+em produção, passando por contrato de dados, engenharia de features,
 experimentos rastreados, registro de modelo, empacotamento, testes, CI e
 container.
 
