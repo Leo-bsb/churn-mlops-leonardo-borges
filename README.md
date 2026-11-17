@@ -8,7 +8,7 @@
 ![MLflow](https://img.shields.io/badge/MLflow-3.16-0194E2?logo=mlflow&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi&logoColor=white)
 
-Projeto-fio-condutor da disciplina de **Engenharia de Machine Learning*: prever quais clientes de uma
+Projeto-fio-condutor da disciplina de **Engenharia de Machine Learning**: prever quais clientes de uma
 operadora de telecom vão cancelar (**churn**) e levar essa previsão até uma API
 em produção, passando por contrato de dados, engenharia de features,
 experimentos rastreados, registro de modelo, empacotamento, testes, CI e
