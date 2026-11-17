@@ -214,58 +214,6 @@ Decisões de implementação:
 `tests/test_schema.py` prova que o contrato pega dado ruim de propósito:
 `tenure = 999`, `Contract = "Vitalício"`, ID duplicado e mensalidade negativa.
 
-### 4.3 Por que o CSV está no Git (e não só no DVC)
-
-Esta é uma decisão consciente, com trade-off explícito:
-
-| | Este repositório | Alternativa canônica |
-|---|---|---|
-| Onde os bytes vivem | `data/churn.csv` no Git | cache do DVC + remote (S3/Drive/DagsHub) |
-| `git clone` + treinar | funciona direto | exige `dvc pull` + credencial do remote |
-| Tamanho no Git | ~1 MB | ~0 |
-| Nova versão do dado | novo commit do CSV | novo ponteiro `.dvc` |
-
-**Por quê:** o dataset tem menos de 1 MB, e o requisito mais importante aqui é
-que qualquer pessoa (professor, colega, CI) consiga clonar e reproduzir sem
-configurar armazenamento externo. O ganho do DVC (deduplicação e remote para
-arquivos grandes) não paga esse custo nesse tamanho.
-
-**O que o DVC continua fazendo:** o `dvc.yaml` descreve o pipeline
-(`dado + código → modelo`), o `dvc.lock` registra os hashes exatos da execução
-última e `dvc repro` evita retreinar quando nada mudou. É o DVC no papel que
-importa para reprodutibilidade — só sem remote.
-
-**Como migrar para o fluxo canônico** (quando o dado crescer):
-
-```bash
-dvc remote add -d storage s3://meu-bucket/churn     # ou outro remote
-dvc add data/churn.csv                              # cria data/churn.csv.dvc
-git rm --cached data/churn.csv                      # o CSV sai do Git
-git add data/churn.csv.dvc data/.gitignore
-dvc push
-```
-
-A linhagem já está preparada para os dois mundos: `lineage.data_md5` lê o
-ponteiro `.dvc` se ele existir e, caso contrário, calcula o md5 do CSV em disco.
-Sem esse fallback, todo run ficaria com `data_md5 = "unknown"` e a tag de
-linhagem seria inútil.
-
-### 4.4 Versionando dados (v1 → v2)
-
-`scripts/make_v2.py` cria 100 linhas novas **válidas** (reamostragem de clientes
-existentes com `customerID` inédito e semente fixa), simulando uma atualização
-da base. Como o CSV está no Git, a troca de versão é um `git checkout`:
-
-```bash
-uv run python scripts/make_v2.py     # 7.043 → 7.143 clientes
-uv run dvc repro                     # retreina e atualiza dvc.lock
-git add data/churn.csv dvc.lock
-git commit -m "dados v2: +100 clientes"
-
-# voltar para a v1
-git checkout HEAD~1 -- data/churn.csv dvc.lock
-uv run dvc repro
-```
 
 ---
 
